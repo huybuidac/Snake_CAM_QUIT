@@ -2,6 +2,7 @@ import { SnakeLogic } from './snake.logic';
 import { Injectable } from '@angular/core';
 import * as socketIo from 'socket.io-client';
 import { Socket } from 'socket.io';
+import { RoomInfor } from '../models/roomInfo.model';
 
 const ClientConfig = {
   PLAYER: {
@@ -83,10 +84,11 @@ export class SocketService {
 
   setupConnection(): any {
     this._socket.on(ClientConfig.PLAYER.INCOMMING.ROOM_STATE, function (res) {
-      console.log('ROOM_STATE', res);
       switch (res.code) {
         case AppConfig.API_CODE.SUCCESS:
           // TODO: Implepment your solution.
+          const roomInfor = res.roomInfo as RoomInfor;
+          console.log('ROOM_STATE', roomInfor);
           break;
 
         default:

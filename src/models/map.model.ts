@@ -1,4 +1,4 @@
-export interface Map {
+export interface MapInfo {
   horizontal?: number;
   vertical?: number;
 }
