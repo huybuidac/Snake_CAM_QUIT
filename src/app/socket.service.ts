@@ -1,3 +1,4 @@
+import { SnakeLogic } from './snake.logic';
 import { Injectable } from '@angular/core';
 import * as socketIo from 'socket.io-client';
 import { Socket } from 'socket.io';
@@ -36,6 +37,7 @@ export class SocketService {
   private _socket: Socket;
   private _tid: string;
   private _mid: string;
+  private _snake: SnakeLogic;
 
   constructor() { }
 
@@ -43,6 +45,7 @@ export class SocketService {
     if (!this._socket) {
       this._socket = socketIo(serverUrl);
       this.isConnected = true;
+      this._snake = new SnakeLogic(this);
       this.setupConnection();
     } else {
       console.error("Server was already connected!!!");
@@ -71,6 +74,7 @@ export class SocketService {
     if (this._socket) {
       this._socket.disconnect();
       this.isConnected = false;
+      this._snake = null;
     } else {
       console.error("Server was already disconnected!!!");
     }
