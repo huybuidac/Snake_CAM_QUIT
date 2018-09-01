@@ -1,0 +1,23 @@
+<div>
+  <h1>
+    {{ socketService.isConnected ? "Server Connected" : "Server Disconnected" }}
+  </h1>
+  <p>
+      <label>Server URL: </label>
+      <input [(ngModel)]="serverUrl" [ngModelOptions]="{updateOn: 'blur'}" style="width: 300px;">
+  </p>
+  <p>
+      <label>tID: </label>
+      <input [(ngModel)]="tid" [ngModelOptions]="{updateOn: 'blur'}" style="width: 300px;">
+  </p>
+  <p>
+      <label>mID: </label>
+      <input [(ngModel)]="mid" [ngModelOptions]="{updateOn: 'blur'}" style="width: 300px;">
+  </p>
+  <p>
+      <label>Forcus input to control: </label>
+      <input (keydown)="handleDirectByKeyboard($event)">
+  </p>
+  <button (click)="connectServer()" [disabled]="socketService.isConnected">Connect Server</button><p></p>
+  <button (click)="disconnectServer()" [disabled]="!socketService.isConnected">Disconnect Server</button><p></p>
+</div>
