@@ -1,8 +1,9 @@
-import { SnakeLogic } from './snake.logic';
+import { SnakeLogic } from '../snake/snake.logic';
 import { Injectable } from '@angular/core';
 import * as socketIo from 'socket.io-client';
 import { Socket } from 'socket.io';
 import { RoomInfor } from '../models/roomInfo.model';
+import { aStar } from './a-star';
 
 const ClientConfig = {
   PLAYER: {
@@ -40,7 +41,8 @@ export class SocketService {
   private _mid: string;
   private _snake: SnakeLogic;
 
-  constructor() { }
+  constructor() {
+  }
 
   connect(serverUrl: string) {
     if (!this._socket) {
@@ -87,8 +89,11 @@ export class SocketService {
       switch (res.code) {
         case AppConfig.API_CODE.SUCCESS:
           // TODO: Implepment your solution.
+          // console.log(res);
           const roomInfor = res.roomInfo as RoomInfor;
-          console.log('ROOM_STATE', roomInfor);
+          if (roomInfor) {
+            this._snake.updateRoom(roomInfor);
+          }
           break;
 
         default:
@@ -96,10 +101,10 @@ export class SocketService {
           break;
       }
 
-    });
+    }.bind(this));
 
     this._socket.on(ClientConfig.PLAYER.INCOMMING.DRIVE_ELEPHANT_STATE, function (res) {
-      console.log('DRIVE_ELEPHANT_STATE', res);
-    });
+      // console.log('DRIVE_ELEPHANT_STATE', res);
+    }.bind(this));
   }
 }
