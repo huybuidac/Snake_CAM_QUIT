@@ -6,9 +6,17 @@ export const environment = {
   production: false,
   tid: '5b7a6c3709611442e9f39ab6',
   mid: '5b7a6c3709611442e9f39ab6',
-  serverURL: 'http://codefest79.satek.vn',
+  serverURL: 'http://10.16.88.250/game/5b97534a166a0902ff78cf78',
   snake_name: 'CAM_QUIT',
 };
+
+// export const environment = {
+//   production: false,
+//   tid: '5b8e0c6bfeb4b2711f7993fa',
+//   mid: '5b8e0c6bfeb4b2711f7993fa',
+//   serverURL: 'http://codefest79.satek.vn',
+//   snake_name: 'Yolo',
+// };
 
 /*
  * In development mode, for easier debugging, you can ignore zone related error

@@ -7,6 +7,9 @@ export interface Player {
   name?: string;
   score?: number;
   segments?: Coordinate[];
+  originalLength?: number;
+  head?: Coordinate;
+  tail?: Coordinate;
 }
 
 export const PlayerUtils = {

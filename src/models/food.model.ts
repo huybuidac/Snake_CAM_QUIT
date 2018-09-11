@@ -19,6 +19,6 @@ export const FoodUtils = {
   },
   sort: (foods: Food[], node: Coordinate) => {
     foods.sort(
-      (a, b) => CoordinateUtils.distance(node, a.coordinate) / a.value - CoordinateUtils.distance(node, b.coordinate) / a.value);
+      (a, b) => CoordinateUtils.distance(node, a.coordinate) / a.value - CoordinateUtils.distance(node, b.coordinate) / b.value);
   }
 };

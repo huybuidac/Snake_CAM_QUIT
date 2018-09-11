@@ -2,7 +2,7 @@ import { SnakeLogic } from '../snake/snake.logic';
 import { Injectable } from '@angular/core';
 import * as socketIo from 'socket.io-client';
 import { Socket } from 'socket.io';
-import { RoomInfor } from '../models/roomInfo.model';
+import { RoomInfor, RoomUtils } from '../models/roomInfo.model';
 import { aStar } from './a-star';
 
 const ClientConfig = {
@@ -92,7 +92,13 @@ export class SocketService {
           // console.log(res);
           const roomInfor = res.roomInfo as RoomInfor;
           if (roomInfor) {
-            this._snake.updateRoom(roomInfor);
+            // RoomUtils.normalize(roomInfor);
+            // console.log(`[${roomInfor.ourPlayer.segments.length}]-[${roomInfor.ourPlayer.score}]:`);
+            try {
+              this._snake.updateRoom(roomInfor);
+            } catch (err) {
+              console.error(err);
+            }
           }
           break;
 

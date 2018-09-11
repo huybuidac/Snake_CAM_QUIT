@@ -6,6 +6,8 @@ export interface MapInfo {
 
 export const MapUtils = {
   isWall: (map: MapInfo, coord: Coordinate) => coord.x <= 0 || coord.x >= map.horizontal || coord.y <= 0 || coord.y >= map.vertical,
+  isNearWall: (map: MapInfo, coord: Coordinate) => coord.x <= 1 || coord.x >= map.horizontal - 1
+    || coord.y <= 1 || coord.y >= map.vertical - 1,
   getWallCost: (map: MapInfo, coord: Coordinate) => {
     const halfWidth = map.horizontal / 2;
     const halfHeight = map.vertical / 2;
