@@ -126,7 +126,7 @@ function reconstructPath(node) {
     return pathSoFar;
   } else {
     // this is the starting node
-    return [node.data];
+    return [];
   }
 }
 

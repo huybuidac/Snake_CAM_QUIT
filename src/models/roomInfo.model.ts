@@ -14,11 +14,19 @@ export interface RoomInfor {
   players?: Player[];
   ourPlayer?: Player;
   otherPlayers?: Player[];
-  cachedSpaces: Dictionary<string, { spaceSize: number, path: Coordinate[] }>;
+  cachedSpaces?: Dictionary<string, { spaceSize: number, path: Coordinate[], seenNodes: any }>;
+  direction?: {
+    dirs?: Coordinate[];
+    title?: string;
+  };
 }
 
 export const RoomUtils = {
   normalize: (roomInfor: RoomInfor) => {
+    // FIXME mock
+    // roomInfor.map = {vertical: 5, horizontal: 5};
+    // roomInfor.players.push({segments: [{x: 2, y: 2}]});
+    // ======
     roomInfor.cachedSpaces = new Dictionary();
     roomInfor.ourPlayer = PlayerUtils.getOurPlayer(roomInfor.players);
     roomInfor.players.forEach(p => {

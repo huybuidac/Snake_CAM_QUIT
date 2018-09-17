@@ -28,5 +28,19 @@ export const CoordinateUtils = {
     if (fromNode.x < toNode.x) return Direction.RIGHT;
     return "";
   },
+  nextCoordinate: (fromNode: Coordinate, dir: Direction) => {
+    const next = { ...fromNode };
+    switch (dir) {
+      case Direction.UP: next.y--;
+        break;
+      case Direction.RIGHT: next.x++;
+        break;
+      case Direction.DOWN: next.y++;
+        break;
+      case Direction.LEFT: next.x--;
+        break;
+    }
+    return next;
+  },
   getHash: (node: Coordinate) => `${node.x},${node.y}`
 };

@@ -21,3 +21,11 @@
   <button (click)="connectServer()" [disabled]="socketService.isConnected">Connect Server</button><p></p>
   <button (click)="disconnectServer()" [disabled]="!socketService.isConnected">Disconnect Server</button><p></p>
 </div>
+<input [(ngModel)]="socketService.updateMap" type="checkbox" (change)="dosomething()"/>Show map
+<div>
+  <div *ngFor="let lst of board">
+    <span style="display: table-cell;height: 20px; width: 20px" [style.background]="item.color" *ngFor="let item of lst">
+      {{item.text}}
+    </span>
+  </div>
+</div>

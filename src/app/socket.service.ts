@@ -1,9 +1,10 @@
 import { SnakeLogic } from '../snake/snake.logic';
 import { Injectable } from '@angular/core';
 import * as socketIo from 'socket.io-client';
-import { Socket } from 'socket.io';
+import { Socket, Room } from 'socket.io';
 import { RoomInfor, RoomUtils } from '../models/roomInfo.model';
 import { aStar } from './a-star';
+import { BehaviorSubject } from 'rxjs';
 
 const ClientConfig = {
   PLAYER: {
@@ -40,6 +41,10 @@ export class SocketService {
   private _tid: string;
   private _mid: string;
   private _snake: SnakeLogic;
+
+  _lastRoom: RoomInfor;
+  roomInfor$ = new BehaviorSubject<RoomInfor>(null);
+  updateMap: boolean;
 
   constructor() {
   }
@@ -92,17 +97,14 @@ export class SocketService {
           // console.log(res);
           const roomInfor = res.roomInfo as RoomInfor;
           if (roomInfor) {
-            // RoomUtils.normalize(roomInfor);
+            // this._snake.updateRoom(roomInfor);
             // console.log(`[${roomInfor.ourPlayer.segments.length}]-[${roomInfor.ourPlayer.score}]:`);
-            try {
-              this._snake.updateRoom(roomInfor);
-            } catch (err) {
-              console.error(err);
-            }
+            this.handleChange(roomInfor);
           }
           break;
 
         default:
+          console.log(res);
           // Other responding code of API: NOT_EXISTED_ROOM, INVALID_KEY, SYSTEM_ERROR, INVALID_PARAMETER, UN_KNOWN
           break;
       }
@@ -112,5 +114,23 @@ export class SocketService {
     this._socket.on(ClientConfig.PLAYER.INCOMMING.DRIVE_ELEPHANT_STATE, function (res) {
       // console.log('DRIVE_ELEPHANT_STATE', res);
     }.bind(this));
+  }
+
+  handleChange(roomInfor: RoomInfor) {
+    try {
+      RoomUtils.normalize(roomInfor);
+      if (roomInfor.ourPlayer.originalLength === 1 && this._lastRoom && this._lastRoom.ourPlayer.originalLength !== 1) {
+        this._lastRoom.cachedSpaces = undefined;
+        console.error("Snake was dead=" + JSON.stringify(this._lastRoom));
+        this._lastRoom = undefined;
+      }
+      this._snake.updateRoom(roomInfor);
+      this._lastRoom = roomInfor;
+      if (this.updateMap) {
+        this.roomInfor$.next(roomInfor);
+      }
+    } catch (err) {
+      console.error(err);
+    }
   }
 }
