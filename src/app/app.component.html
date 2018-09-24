@@ -20,6 +20,7 @@
   </p>
   <button (click)="connectServer()" [disabled]="socketService.isConnected">Connect Server</button><p></p>
   <button (click)="disconnectServer()" [disabled]="!socketService.isConnected">Disconnect Server</button><p></p>
+  <button (click)="test()">Test</button><p></p>
 </div>
 <input [(ngModel)]="socketService.updateMap" type="checkbox" (change)="dosomething()"/>Show map
 <div>

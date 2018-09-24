@@ -6,7 +6,7 @@ export const environment = {
   production: false,
   tid: '5b7a6c3709611442e9f39ab6',
   mid: '5b7a6c3709611442e9f39ab6',
-  serverURL: 'http://54.255.181.99/',
+  serverURL: 'http://codefest79.techover.io/',
   snake_name: 'CAM_QUIT',
 };
 

@@ -83,6 +83,10 @@ export class AppComponent implements OnDestroy {
     this.socketService.registerRoom(this.tid, this.mid);
   }
 
+  test() {
+    this.socketService.test();
+  }
+
   disconnectServer() {
     this.socketService.disconnect();
   }

@@ -1,3 +1,5 @@
+import { RoomInfor } from './../models/roomInfo.model';
+import { element } from 'protractor';
 import { MapInfo } from './../models/map.model';
 import { AStarResult, AStarStatus, ResultGoal } from './../app/a-star';
 import { Direction } from './../models/direction.enum';
@@ -11,11 +13,46 @@ import { environment } from '../environments/environment';
 import { MapUtils } from '../models/map.model';
 import { Dictionary } from 'typescript-collections';
 import { FoodUtils } from '../models/food.model';
+import { delay } from 'rxjs/operators';
+import { of } from 'rxjs';
+import { objectUtils } from './utiles';
 
 const SEARCH_TIMEOUT = 50;
 const COST_HEAVY = 1000;
 const COST_MODERATE = 250;
 const COST_LIGHT = 100;
+
+enum NodeState {
+  None = 0,
+  NearEdge = 1,
+  Grow = 2,
+  Intercept = 4, // in the half step near our
+  NearEageAndIntercept = 5
+}
+
+interface NodeContainer {
+  state?: NodeState;
+  node?: Coordinate;
+  path?: Coordinate[];
+  level?: number;
+}
+
+interface NodesLevel {
+  level: number;
+  nodes: NodeContainer[];
+  hasIntercept?: boolean;
+}
+
+interface SpaceContainer {
+  player?: Player;
+  validNodes?: NodeContainer[]; // all node can travel
+  seenNodes?: Dictionary<string, NodeContainer>; // all node indexed by xy
+  nodeLevels?: NodesLevel[]; // phân cấp
+  total?: number;
+  totalWithoutIntercept?: number;
+  stop?: boolean;
+  levelMeetEnemyHead?: number;
+}
 
 export class SnakeLogic {
 
@@ -36,7 +73,125 @@ export class SnakeLogic {
     } else {
       result = 2;
     }
-    return 3;
+    return 4;
+  }
+
+  async killEnemy(roomInfor: RoomInfor) {
+    RoomUtils.normalize(roomInfor);
+    const ourHead = roomInfor.ourPlayer.head;
+    const ourTail = roomInfor.ourPlayer.tail;
+
+    const me = roomInfor.ourPlayer;
+    const enemy = roomInfor.otherPlayers[0];
+
+    // setup space container
+    let start = { node: ourHead, path: [ourHead] };
+    const ourSpace: SpaceContainer = {
+      player: me,
+      validNodes: [start],
+      seenNodes: new Dictionary(),
+      nodeLevels: [{ level: 0, nodes: [start] }]
+    };
+    ourSpace.seenNodes.setValue(CoordinateUtils.getHash(ourHead), start);
+    start = { node: enemy.head, path: [enemy.head] };
+    const enemySpace: SpaceContainer = {
+      player: enemy,
+      validNodes: [start],
+      seenNodes: new Dictionary(),
+      nodeLevels: [{ level: 0, nodes: [start] }]
+    };
+    enemySpace.seenNodes.setValue(CoordinateUtils.getHash(enemy.head), start);
+
+    roomInfor.direction = { dirs: [] };
+    while (true) {
+      this.calculateSpacesOnLevel(ourSpace, roomInfor);
+      this.calculateSpacesOnLevel(enemySpace, roomInfor);
+
+      const lastOurLevel = _.last(ourSpace.nodeLevels);
+      const lastEnemyLevel = _.last(enemySpace.nodeLevels);
+
+      // 1. Cal intercept
+      this.calculateIntercept(enemySpace, lastEnemyLevel, ourSpace);
+      this.calculateIntercept(ourSpace, lastOurLevel, enemySpace);
+
+      roomInfor.direction.dirs = [...lastEnemyLevel.nodes.map(t => t.node), ...lastOurLevel.nodes.map(t => t.node)];
+      this._server.roomInfor$.next(roomInfor);
+      // await of(1).pipe(delay(200)).toPromise();
+
+      // 2. handle logic to kill when both finish
+      if (ourSpace.stop && enemySpace.stop) {
+
+        // 3. no need to handle when enemy can escape
+        if (enemySpace.totalWithoutIntercept > enemySpace.player.segments.length) {
+          break;
+        } else {
+          // find longest way to block
+
+          const firtIntercept = enemySpace.nodeLevels.findIndex(nl => nl.hasIntercept);
+          for (let index = enemySpace.levelMeetEnemyHead; index >= firtIntercept; index--) {
+            const level = enemySpace.nodeLevels[index];
+            if (level.nodes.length === 1) {
+              // todo calculate to return head
+            }
+          }
+          const first = enemySpace.nodeLevels.find(nl => nl.hasIntercept && nl.nodes.findIndex(n =>
+            (n.state & NodeState.NearEageAndIntercept) === NodeState.NearEageAndIntercept) >= 0);
+          // .nodes.filter(nz => nz.state & NodeState.NearEdge);
+          const result = this.aStarSearch(roomInfor, ourHead, first.nodes.filter(n =>
+            (n.state & NodeState.NearEageAndIntercept) === NodeState.NearEageAndIntercept).map(n => n.node));
+          console.log(first, result);
+          roomInfor.direction.dirs = result.path;
+          this._server.roomInfor$.next(roomInfor);
+        }
+        break;
+      }
+
+    }
+  }
+
+  private calculateIntercept(target: SpaceContainer, lastEnemyLevel: NodesLevel, compare: SpaceContainer) {
+    if (!target.stop) {
+      lastEnemyLevel.nodes.forEach(ln => {
+        if (compare.seenNodes.getValue(CoordinateUtils.getHash(ln.node))) {
+          lastEnemyLevel.hasIntercept = true;
+          ln.state = NodeState.Intercept;
+          target.totalWithoutIntercept--;
+        }
+        if (!target.levelMeetEnemyHead && compare.nodeLevels.length > 1) {
+          if (compare.nodeLevels[1].nodes.find(n => CoordinateUtils.isSame(n.node, ln.node))) {
+            target.levelMeetEnemyHead = lastEnemyLevel.level;
+          }
+        }
+      });
+    }
+  }
+
+  private calculateSpacesOnLevel(space: SpaceContainer, roomInfor: RoomInfor) {
+    const lastLevel = _.last(space.nodeLevels);
+    const nextLevel: NodesLevel = { level: lastLevel.level + 1, nodes: [] };
+    if (lastLevel.nodes.length > 0) {
+      lastLevel.nodes.forEach(computingNode => {
+        const neighbors = this.validNeighbors(roomInfor, computingNode.node, computingNode.path, space.player);
+        neighbors.forEach(neighbor => {
+          const nodeContainer = { node: neighbor, path: [...computingNode.path, neighbor], state: NodeState.None };
+          if (!space.seenNodes.getValue(CoordinateUtils.getHash(neighbor))) {
+            space.seenNodes.setValue(CoordinateUtils.getHash(neighbor), nodeContainer);
+            space.validNodes.push(nodeContainer);
+            nextLevel.nodes.push(nodeContainer);
+            space.total++;
+            space.totalWithoutIntercept++;
+          }
+        });
+        if (neighbors.length === 3) {
+          computingNode.state = computingNode.state | NodeState.Grow;
+        } else {
+          // no way
+          computingNode.state = computingNode.state | NodeState.NearEdge;
+        }
+      });
+      space.nodeLevels.push(nextLevel);
+    }
+    space.stop = nextLevel.nodes.length === 0;
   }
 
   updateRoom(roomInfor: RoomInfor) {
@@ -69,14 +224,17 @@ export class SnakeLogic {
     const tailTargets = this.goodNeighbors(roomInfor, ourTail);
     if (!PlayerUtils.isGrowing(roomInfor.ourPlayer)) tailTargets.push(ourTail);
     for (let i = 0; i < tailTargets.length; i++) {
+      if (CoordinateUtils.isSame(tailTargets[i], ourHead)) continue;
       const result = this.aStarSearch(roomInfor, ourHead, [tailTargets[i]]);
       if (result.status !== AStarStatus.success) continue;
-      if (result.path.length === 0) continue;
       result.goal = ResultGoal.tail;
 
-
-      const neighbors = this.goodNeighbors(roomInfor, tailTargets[i], result.path);
-      if (!neighbors || neighbors.length < 1) continue;
+      if (PlayerUtils.isGrowing(roomInfor.ourPlayer)) {
+        const remain = roomInfor.ourPlayer.segments.length - roomInfor.ourPlayer.originalLength;
+        if (result.path.length < remain) continue;
+      }
+      // const neighbors = this.goodNeighbors(roomInfor, tailTargets[i], result.path);
+      // if (!neighbors || neighbors.length < 1) continue;
 
       results.push(result);
     }
@@ -89,19 +247,19 @@ export class SnakeLogic {
     for (let i = 0; i < foodTravel; i++) {
       const food = roomInfor.foods[i];
       let result: AStarResult = null;
-      // if (nearestResult.status === AStarStatus.success && CoordinateUtils.isSame(_.last(nearestResult.path), food.coordinate)) {
-      //   result = nearestResult;
-      // } else {
+      if (nearestResult.status === AStarStatus.success && CoordinateUtils.isSame(_.last(nearestResult.path), food.coordinate)) {
+        result = nearestResult;
+      } else {
         result = this.aStarSearch(roomInfor, ourHead, [food.coordinate]);
         if (result.status !== AStarStatus.success) continue;
-      // }
+      }
 
       // eliminate food close to the head of a bigger enemy snake
       if (this.enemyDistance(roomInfor, food.coordinate) < 3) continue;
 
       const firstNode = result.path[0];
       // eliminate paths we can't fit into (compute space size pessimistically)
-      if (this.getSpaceSize(roomInfor, firstNode).spaceSize < roomInfor.ourPlayer.segments.length + 2) continue;
+      if (this.getSpaceSize(roomInfor, firstNode, [firstNode]).spaceSize < roomInfor.ourPlayer.segments.length + 2) continue;
 
       // calculate to next path:
 
@@ -178,23 +336,25 @@ export class SnakeLogic {
         return a.cost - b.cost;
       });
       const cheapest = results[0];
-      // if (cheapest.goal === ResultGoal.food && cheapest.path.length < 4) {
-      //   const targetFood = _.last(cheapest.path);
-      //   const foods = roomInfor.foods.filter(f => !CoordinateUtils.isSame(f.coordinate, targetFood)).map(f => f.coordinate);
-      //   const nextResult = this.aStarSearch(roomInfor, targetFood, foods, cheapest.path);
-      //   if (nextResult.status === AStarStatus.success) {
-      //     cheapest.path = cheapest.path.concat(nextResult.path);
-      //   }
-      // }
-      // if (cheapest.goal === ResultGoal.tail && cheapest.path.length === 1) {
-      //   const step = roomInfor.ourPlayer.segments.length - 1 < 4 ? roomInfor.ourPlayer.segments.length - 1 : 3;
-      //   const targetTail = _.last(cheapest.path);
-      //   for (let index = roomInfor.ourPlayer.segments.length - 1; index > roomInfor.ourPlayer.segments.length - step; index--) {
-      //     if (!CoordinateUtils.isSame(targetTail, roomInfor.ourPlayer.segments[index])) {
-      //       cheapest.path.push(roomInfor.ourPlayer.segments[index]);
-      //     }
-      //   }
-      // }
+      if (cheapest.goal === ResultGoal.food && cheapest.path.length < 4) {
+        const targetFood = _.last(cheapest.path);
+        const foods = roomInfor.foods.filter(f => !CoordinateUtils.isSame(f.coordinate, targetFood)).map(f => f.coordinate);
+        // const clonedRoom = objectUtils.cloneObject(roomInfor) as RoomInfor;
+        // clonedRoom.foods = foods
+        const nextResult = this.aStarSearch(roomInfor, targetFood, foods, cheapest.path);
+        if (nextResult.status === AStarStatus.success) {
+          cheapest.path = cheapest.path.concat(nextResult.path);
+        }
+      }
+      if (cheapest.goal === ResultGoal.tail && cheapest.path.length === 1) {
+        const step = roomInfor.ourPlayer.segments.length - 1 < 4 ? roomInfor.ourPlayer.segments.length - 1 : 3;
+        const targetTail = _.last(cheapest.path);
+        for (let index = roomInfor.ourPlayer.segments.length - 1; index > roomInfor.ourPlayer.segments.length - step; index--) {
+          if (!CoordinateUtils.isSame(targetTail, roomInfor.ourPlayer.segments[index])) {
+            cheapest.path.push(roomInfor.ourPlayer.segments[index]);
+          }
+        }
+      }
       // results.forEach(r => console.log(r.goal, r.cost, r.path.length));
       return this.res(roomInfor,
         results[0].path,
@@ -202,19 +362,7 @@ export class SnakeLogic {
       );
     }
 
-    // no best moves, pick the direction that has the most open space
-    // first be pessimistic: avoid nodes next to enemy heads and spaces too small for us
-    // if that fails, be optimistic: include nodes next to enemy heads and small spaces
-    // const moves = this.getSpaciousMoves(roomInfor, roomInfor.ourPlayer);
-    // moves.sort((a, b) => {
-    //   // don't cut off escape routes
-    //   if (a.spaceSize === b.spaceSize) {
-    //     return a.wallCost - b.wallCost;
-    //   } else {
-    //     return b.spaceSize - a.spaceSize;
-    //   }
-    // });
-    const spacePath = this.calculateLongestPath(roomInfor, ourHead);
+    const spacePath = this.calculateSpacePath(roomInfor, ourHead);
     if (spacePath.length > 0) {
       return this.res(roomInfor,
         spacePath,
@@ -237,35 +385,66 @@ export class SnakeLogic {
     return this.res(roomInfor, [CoordinateUtils.nextCoordinate(ourHead, Direction.UP)], 'no valid moves');
   }
 
-  private calculateLongestPath(roomInfor: RoomInfor, ourHead: Coordinate) {
-    const space = this.getSpaceSize(roomInfor, ourHead);
-    let path = space.path;
-    if (path.length > roomInfor.ourPlayer.segments.length + 3 || path.length === 0) {
-      console.log(`ESCAPE: Free to go path=${path.length}`);
-      return path;
+  // find the way in map
+  private calculateSpacePath(roomInfor: RoomInfor, ourHead: Coordinate, ourPath?: Coordinate[]) {
+    const space = this.getSpaceSize(roomInfor, ourHead, ourPath);
+    let spacePath = space.path;
+    if (spacePath.length > roomInfor.ourPlayer.segments.length + 3 || spacePath.length === 0) {
+      console.log(`ESCAPE: Free to go path=${spacePath.length}`);
+      return spacePath;
     }
-    const escapeResult = this.findEscape(roomInfor, space.seenNodes);
+    // const a = [];
+    // for (const key in space.seenNodes) {
+    //   if (space.seenNodes.hasOwnProperty(key)) {
+    //     const aaaa = key.split(",");
+    //     a.push({x: aaaa[0], y: aaaa[1]});
+    //   }
+    // }
+    // return a;
+    const escapeResults = this.findEscape(roomInfor, space.seenNodes);
+    let escaped = false;
+    for (let index = 0; index < escapeResults.length; index++) {
+      const escapeResult = escapeResults[index];
+      const path = this.findPathToEscape(roomInfor, ourHead, escapeResult, [...spacePath]);
+      if (path) {
+        spacePath = path;
+        escaped = true;
+        break;
+      }
+    }
+
+    if (!escaped) {
+      this.findFitPath(roomInfor, ourHead, { node: _.last(spacePath), length: roomInfor.ourPlayer.segments.length }, spacePath);
+    }
+
+    // console.log(path);
+    return spacePath;
+  }
+
+  findPathToEscape(roomInfor: RoomInfor, ourHead: Coordinate, escapeResult: { node: Coordinate, length: number }, path: Coordinate[]) {
     if (escapeResult.node) {
-      const result = this.aStarSearch(roomInfor, ourHead, [escapeResult.node]);
+      const result = this.aStarSearch(roomInfor, ourHead, [escapeResult.node], null, null, [escapeResult.node]);
       if (result.status === AStarStatus.success) {
-        if (path.length > 0) {
-          path = result.path;
-        } else {
-          console.error(`ESCAPE: Path EMPTY from:`, ourHead, ' => ', escapeResult.node, ', map=', roomInfor);
-          return path;
-        }
+        path = result.path;
       } else {
         console.error(`ESCAPE: Could not find to: `, escapeResult.node, ', map=', roomInfor);
+        return null;
       }
     } else {
       console.log(`ESCAPE: No way`, ', map=', roomInfor);
     }
     console.log(`ESCAPE: Path from:`, ourHead, ' => ', escapeResult.node, " = ", path);
+    const escaped = this.findFitPath(roomInfor, ourHead, escapeResult, path);
+    return escaped ? path : null;
+  }
+
+  findFitPath(roomInfor: RoomInfor, ourHead: Coordinate, escapeResult: { node: Coordinate, length: number }, path: Coordinate[]) {
     const seenNodes = {} as any;
     seenNodes[CoordinateUtils.getHash(ourHead)] = true;
     path.forEach(coord => seenNodes[CoordinateUtils.getHash(coord)] = true);
     let curNode = ourHead;
     let idx = 0;
+    let escaped = false;
     while (true) {
       const nextCoord = path[idx];
       const direct = CoordinateUtils.direction(curNode, nextCoord);
@@ -292,7 +471,8 @@ export class SnakeLogic {
         }
       }
 
-      if (path.length > escapeResult.length + 2) {
+      if (path.length > escapeResult.length) {
+        escaped = true;
         break;
       }
 
@@ -302,48 +482,39 @@ export class SnakeLogic {
           break;
       }
     }
-    // console.log(path);
-    return path;
+    return escaped;
   }
 
-  findEscape(roomInfor: RoomInfor, seenNodes: any): { node: Coordinate, length: number } {
-    const best = {} as { node: Coordinate, length: number };
+  findEscape(roomInfor: RoomInfor, seenNodes: any): { node: Coordinate, length: number }[] {
+    const best: { node: Coordinate, length: number }[] = [];
     if (roomInfor.ourPlayer.originalLength > 1) {
       const b = this.findEscapePlayer(roomInfor, roomInfor.ourPlayer, 1
         , roomInfor.ourPlayer.segments.length - 1, seenNodes, new Dictionary());
       if (b) {
-        const length = CoordinateUtils.distance(roomInfor.ourPlayer.tail, b);
-        if (!best.node || best.length > length) {
-          best.length = length;
-          best.node = b;
-        }
+        best.push(b);
       }
     }
     roomInfor.otherPlayers.forEach(p => {
       const b = this.findEscapePlayer(roomInfor, p, 0, p.segments.length - 1, seenNodes, new Dictionary());
       if (b) {
-        const length = CoordinateUtils.distance(p.tail, b);
-        if (!best.node || best.length > length) {
-          best.length = length;
-          best.node = b;
-        }
+        best.push(b);
       }
     });
     return best;
   }
 
   findEscapePlayer(roomInfor: RoomInfor, p: Player, start: number, end: number
-    , seenNodes: any, checkedNodes: Dictionary<string, boolean>): Coordinate {
+    , seenNodes: any, checkedNodes: Dictionary<string, boolean>): { node: Coordinate, length: number } {
     const index = start + Math.floor((end - start) / 2);
     const checkingNode = p.segments[index];
     const checkingHash = CoordinateUtils.getHash(checkingNode);
 
     if (checkedNodes.containsKey(checkingHash)) {
-      return checkedNodes.getValue(checkingHash) ? checkingNode : null;
+      return checkedNodes.getValue(checkingHash) ? { node: checkingNode, length: p.segments.length - index } : null;
     }
     const neighours = this.validNeighbors(roomInfor, checkingNode);
     const valid = neighours.findIndex(n => seenNodes[CoordinateUtils.getHash(n)]) >= 0;
-      // && neighours.findIndex(n => seenNodes[CoordinateUtils.getHash(n)]) < 0;
+    // && neighours.findIndex(n => seenNodes[CoordinateUtils.getHash(n)]) < 0;
     checkedNodes.setValue(checkingHash, valid);
     if (valid) {
       return this.findEscapePlayer(roomInfor, p, index, end, seenNodes, checkedNodes);
@@ -352,24 +523,6 @@ export class SnakeLogic {
     }
   }
 
-  // getSpaciousMoves(roomInfor: RoomInfor, snake: Player) {
-  //   const moves = [];
-  //   const ourHead = _.first(snake.segments);
-  //   const headNeighbors = this.validNeighbors(roomInfor, ourHead);
-
-  //   for (let i = 0; i < headNeighbors.length; i++) {
-  //     const neighbor = headNeighbors[i];
-  //     const spaceSize = this.getSpaceSize(roomInfor, neighbor);
-  //     moves.push({
-  //       node: neighbor,
-  //       direction: spaceSize.path,
-  //       spaceSize: spaceSize.spaceSize,
-  //       wallCost: MapUtils.getWallCost(roomInfor.map, neighbor),
-  //       isNextMove: this.isPossibleNextMoveOfOtherSnake(roomInfor, neighbor)
-  //     });
-  //   }
-  //   return moves;
-  // }
   res(roomInfor: RoomInfor, dirs: Coordinate[], des: string) {
     const dirString = this.getDirectionsFromPath(roomInfor, dirs);
     if (dirString) {
@@ -443,18 +596,26 @@ export class SnakeLogic {
     return filtered.length > 0;
   }
 
-  isNodeInSnake(roomInfor: RoomInfor, node: Coordinate, ourPath?: Coordinate[]): any {
+  isNodeInSnake(roomInfor: RoomInfor, node: Coordinate, ourPath?: Coordinate[], targetSnake?: Player): any {
     const dirLength = ourPath ? ourPath.length : 0;
-    for (let i = 0; i < roomInfor.otherPlayers.length; i++) {
-      if (CoordinateUtils.isInNodes(roomInfor.otherPlayers[i].segments, node, dirLength)) {
+    let otherPlayer = roomInfor.otherPlayers;
+    let ourPlayer = roomInfor.ourPlayer;
+    if (targetSnake) {
+      otherPlayer = roomInfor.players.filter(p => p.name !== targetSnake.name);
+      ourPlayer = targetSnake;
+    }
+    for (let i = 0; i < otherPlayer.length; i++) {
+      if (CoordinateUtils.isInNodes(otherPlayer[i].segments, node, dirLength)) {
         return true;
       }
     }
-    if (CoordinateUtils.isInNodes(roomInfor.ourPlayer.segments, node, dirLength)) {
+    if (CoordinateUtils.isInNodes(ourPlayer.segments, node, dirLength)) {
+      return true;
+    } else if (ourPath && CoordinateUtils.isInNodes(ourPath, node)) {
       return true;
     } else {
-      const start = dirLength - roomInfor.ourPlayer.segments.length;
-      if (start > 0)
+      const start = dirLength - ourPlayer.segments.length;
+      if (start >= 0)
         for (let index = start; index < dirLength; index++) {
           if (CoordinateUtils.isSame(ourPath[index], node)) {
             return true;
@@ -464,14 +625,14 @@ export class SnakeLogic {
     return false;
   }
 
-  goodNeighbors(roomInfor: RoomInfor, node: Coordinate, ourPath?: Coordinate[]) {
-    return this.validNeighbors(roomInfor, node, ourPath).filter((n) => {
+  goodNeighbors(roomInfor: RoomInfor, node: Coordinate, ourPath?: Coordinate[], targetSnake?: Player, ignoreNodes?: Coordinate[]) {
+    return this.validNeighbors(roomInfor, node, ourPath, targetSnake, ignoreNodes).filter((n) => {
       // don't consider nodes adjacent to the head of another snake
       return !this.isPossibleNextMoveOfOtherSnake(roomInfor, n);
     });
   }
 
-  validNeighbors(roomInfor: RoomInfor, node: Coordinate, ourPath?: Coordinate[]) {
+  validNeighbors(roomInfor: RoomInfor, node: Coordinate, ourPath?: Coordinate[], targetSnake?: Player, ignoreNodes?: Coordinate[]) {
     return CoordinateUtils.neighbors(node).filter((nb) => {
       // if (ourPath && ourPath.length > 1 && CoordinateUtils.isSame(ourPath[1], nb)) return false;
 
@@ -479,7 +640,9 @@ export class SnakeLogic {
       if (MapUtils.isWall(roomInfor.map, nb)) return false;
 
       // don't consider occupied nodes unless they are moving tails
-      if (this.isNodeInSnake(roomInfor, nb, ourPath) && !this.isMovingTail(roomInfor, nb)) return false;
+      // ignore nodes
+      if (!(ignoreNodes && CoordinateUtils.isInNodes(ignoreNodes, nb))
+        && this.isNodeInSnake(roomInfor, nb, ourPath, targetSnake) && !this.isMovingTail(roomInfor, nb)) return false;
 
       // custom wall!!! return false;
 
@@ -505,11 +668,14 @@ export class SnakeLogic {
   }
 
   //#region A-START search
-  private aStarSearch(roomInfor: RoomInfor, start: Coordinate, targets: Coordinate[], ourPath?: Coordinate[]): AStarResult {
+  private aStarSearch(roomInfor: RoomInfor, start: Coordinate,
+    targets: Coordinate[], ourPath?: Coordinate[], targetSnake?: Player, ignoreNodes?: Coordinate[]
+  ): AStarResult {
     const options = {
       start: start,
-      isEnd: (node: Coordinate) => CoordinateUtils.isInNodes(targets, node),
-      neighbor: (node: Coordinate, path: Coordinate[]) => this.goodNeighbors(roomInfor, node, ourPath ? ourPath.concat(path) : path),
+      isEnd: (node: Coordinate) => CoordinateUtils.isInNodes(targets, node) ,
+      neighbor: (node: Coordinate, path: Coordinate[]) => this.goodNeighbors(
+        roomInfor, node, ourPath ? ourPath.concat(path) : path, targetSnake, ignoreNodes),
       distance: CoordinateUtils.distance,
       heuristic: (node) => this.heuristic(roomInfor, node),
       hash: CoordinateUtils.getHash,

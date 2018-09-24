@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "scripts": {
     "ng": "ng",
-    "start": "ng serve",
+    "start": "ng serve --port=2894",
     "build": "ng build",
     "test": "ng test",
     "lint": "ng lint",
@@ -23,7 +23,7 @@
     "core-js": "^2.5.4",
     "lodash": "^4.17.10",
     "moment": "^2.22.2",
-    "rxjs": "^6.0.0",
+    "rxjs": "^6.3.2",
     "socket.io": "^2.1.1",
     "typescript-collections": "^1.3.2",
     "zone.js": "~0.8.26"

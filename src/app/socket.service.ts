@@ -1,3 +1,4 @@
+import { Coordinate, CoordinateUtils } from './../models/coordinate.model';
 import { SnakeLogic } from '../snake/snake.logic';
 import { Injectable } from '@angular/core';
 import * as socketIo from 'socket.io-client';
@@ -5,6 +6,10 @@ import { Socket, Room } from 'socket.io';
 import { RoomInfor, RoomUtils } from '../models/roomInfo.model';
 import { aStar } from './a-star';
 import { BehaviorSubject } from 'rxjs';
+import { test_map1 } from './test_1';
+import { test_map2 } from './test_2';
+import { test_escape1 } from './test_escape1';
+import { test_escape2 } from './test_escape2';
 
 const ClientConfig = {
   PLAYER: {
@@ -48,7 +53,22 @@ export class SocketService {
 
   constructor() {
   }
-
+  // test() {
+  //   this._snake = new SnakeLogic(this);
+  //   this._snake.killEnemy(test_map2);
+  //   // RoomUtils.normalize(test_map1);
+  //   // this.handleChange(test_map1);
+  // }
+  // test() {
+  //   this._snake = new SnakeLogic(this);
+  //   RoomUtils.normalize(test_escape1);
+  //   this.handleChange(test_escape1);
+  // }
+    test() {
+    this._snake = new SnakeLogic(this);
+    RoomUtils.normalize(test_escape2);
+    this.handleChange(test_escape2);
+  }
   connect(serverUrl: string) {
     if (!this._socket) {
       this._socket = socketIo(serverUrl);
@@ -119,6 +139,10 @@ export class SocketService {
   handleChange(roomInfor: RoomInfor) {
     try {
       RoomUtils.normalize(roomInfor);
+      if (this._lastRoom && !CoordinateUtils.isSame(roomInfor.ourPlayer.head, roomInfor.ourPlayer.tail)
+        && CoordinateUtils.isSame(roomInfor.ourPlayer.head, this._lastRoom.ourPlayer.head)) {
+        console.log("duplicate");
+      }
       if (roomInfor.ourPlayer.originalLength === 1 && this._lastRoom && this._lastRoom.ourPlayer.originalLength !== 1) {
         this._lastRoom.cachedSpaces = undefined;
         console.error("Snake was dead=" + JSON.stringify(this._lastRoom));
