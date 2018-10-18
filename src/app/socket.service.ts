@@ -10,6 +10,7 @@ import { test_map1 } from './test_1';
 import { test_map2 } from './test_2';
 import { test_escape1 } from './test_escape1';
 import { test_escape2 } from './test_escape2';
+import { HttpClient } from '@angular/common/http';
 
 const ClientConfig = {
   PLAYER: {
@@ -51,7 +52,9 @@ export class SocketService {
   roomInfor$ = new BehaviorSubject<RoomInfor>(null);
   updateMap: boolean;
 
-  constructor() {
+  constructor(
+    private http: HttpClient
+  ) {
   }
   // test() {
   //   this._snake = new SnakeLogic(this);
@@ -64,10 +67,17 @@ export class SocketService {
   //   RoomUtils.normalize(test_escape1);
   //   this.handleChange(test_escape1);
   // }
-    test() {
+  // test() {
+  //   this._snake = new SnakeLogic(this);
+  // RoomUtils.normalize(test_escape2);
+  // this.handleChange(test_escape2);
+  // }
+  test() {
     this._snake = new SnakeLogic(this);
-    RoomUtils.normalize(test_escape2);
-    this.handleChange(test_escape2);
+    this.http.get('./src/app/test_3.json').subscribe(res => {
+      RoomUtils.normalize(res);
+      this.handleChange(res);
+    });
   }
   connect(serverUrl: string) {
     if (!this._socket) {
@@ -117,6 +127,7 @@ export class SocketService {
           // console.log(res);
           const roomInfor = res.roomInfo as RoomInfor;
           if (roomInfor) {
+            // console.log(roomInfor);
             // this._snake.updateRoom(roomInfor);
             // console.log(`[${roomInfor.ourPlayer.segments.length}]-[${roomInfor.ourPlayer.score}]:`);
             this.handleChange(roomInfor);
@@ -138,6 +149,7 @@ export class SocketService {
 
   handleChange(roomInfor: RoomInfor) {
     try {
+      // console.log(roomInfor);
       RoomUtils.normalize(roomInfor);
       if (this._lastRoom && !CoordinateUtils.isSame(roomInfor.ourPlayer.head, roomInfor.ourPlayer.tail)
         && CoordinateUtils.isSame(roomInfor.ourPlayer.head, this._lastRoom.ourPlayer.head)) {

@@ -12,6 +12,17 @@ export interface RoomInfor {
   foods?: Food[];
   map?: MapInfo;
   players?: Player[];
+  wall?: Coordinate[];
+  zone?: {
+    allowed_place: Coordinate[],
+    check_point: Coordinate[],
+    coordinate: {
+      bottom_left: Coordinate,
+      bottom_right: Coordinate,
+      top_left: Coordinate,
+      top_right: Coordinate,
+    }
+  };
   ourPlayer?: Player;
   otherPlayers?: Player[];
   cachedSpaces?: Dictionary<string, { spaceSize: number, path: Coordinate[], seenNodes: any }>;

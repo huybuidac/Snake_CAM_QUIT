@@ -3,6 +3,8 @@ import { environment } from '../environments/environment';
 import { SocketService } from './socket.service';
 import { Component, OnInit, OnDestroy } from '@angular/core';
 import { Direction } from '../models/direction.enum';
+import { BehaviorSubject } from 'rxjs';
+import { mergeMap, map, tap, switchMap } from 'rxjs/operators';
 export interface Piece {
   color?: string;
   text?: string;
@@ -14,7 +16,12 @@ export enum SnakeColor {
   Food = 'black',
   Path = 'bisque'
 }
-
+interface sub1 {
+  a: number;
+}
+interface sub2 {
+  b: number;
+}
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
@@ -26,6 +33,25 @@ export class AppComponent implements OnDestroy {
   serverUrl = environment.serverURL;
   tid = environment.tid;
   mid = environment.mid;
+  subNum1 = 0;
+  subNum2 = 0;
+  sub1 = new BehaviorSubject<sub1>(null);
+  sub2 = new BehaviorSubject<sub2>(null);
+
+  // sub = this.sub1.pipe(
+  //   mergeMap(_ => this.sub2, (a, b) => {...a, ...b})
+  // )
+
+  loading = this.sub1.pipe(
+    switchMap(_ => this.sub2.pipe(
+      map(val => ({ ..._, ...val }))
+    )),
+    tap(val => console.log("tap loading", val))
+  );
+
+  x = this.loading.subscribe(
+    val => console.log("loading", val)
+  );
 
   public board: Piece[][] = [
   ];
@@ -48,18 +74,22 @@ export class AppComponent implements OnDestroy {
       count = 0;
       boardBuild.forEach(el => el[0].text = count++ + "");
       // RoomUtils.normalize(room);
-      room.direction.dirs.forEach(node => boardBuild[node.y][node.x] = { color: SnakeColor.Path });
-      room.ourPlayer.segments.forEach(seg => boardBuild[seg.y][seg.x] = { color: SnakeColor.Our });
-      room.otherPlayers.forEach(p => p.segments.forEach(seg => boardBuild[seg.y][seg.x] = { color: SnakeColor.Enemy }));
-      room.foods.forEach(p => boardBuild[p.coordinate.y][p.coordinate.x] = { color: SnakeColor.Food });
-      boardBuild[room.ourPlayer.head.y][room.ourPlayer.head.x] = { color: 'green' };
-      boardBuild[room.ourPlayer.tail.y][room.ourPlayer.tail.x] = { color: 'yellow' };
-      this.board = boardBuild;
+      try {
+        room.direction.dirs.forEach(node => boardBuild[node.y][node.x] = { color: SnakeColor.Path });
+        room.ourPlayer.segments.forEach(seg => boardBuild[seg.y][seg.x] = { color: SnakeColor.Our });
+        room.otherPlayers.forEach(p => p.segments.forEach(seg => boardBuild[seg.y][seg.x] = { color: SnakeColor.Enemy }));
+        room.foods.forEach(p => boardBuild[p.coordinate.y][p.coordinate.x] = { color: SnakeColor.Food });
+        boardBuild[room.ourPlayer.head.y][room.ourPlayer.head.x] = { color: 'green' };
+        boardBuild[room.ourPlayer.tail.y][room.ourPlayer.tail.x] = { color: 'yellow' };
+        this.board = boardBuild;
+      } catch(err) {
+        console.error(err);
+      }
     });
   }
 
-  dosomething(xxx) {
-    console.log(xxx, this.socketService.updateMap);
+  dosomething() {
+    // console.log(xxx, this.socketService.updateMap);
   }
 
   handleDirectByKeyboard($event) {
@@ -79,15 +109,18 @@ export class AppComponent implements OnDestroy {
   }
 
   connectServer() {
+    // this.sub1.next({ a: ++this.subNum1 });
     this.socketService.connect(this.serverUrl);
     this.socketService.registerRoom(this.tid, this.mid);
   }
 
   test() {
+    // this.sub2.next({ b: ++this.subNum2 });
     this.socketService.test();
   }
 
   disconnectServer() {
+    this.sub2.next({ b: ++this.subNum2 });
     this.socketService.disconnect();
   }
 
